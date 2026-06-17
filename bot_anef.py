@@ -17,13 +17,19 @@ CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 with open(CONFIG_FILE, "r") as f:
     config = json.load(f)
 
-USERNAME = os.getenv("ANEF_USER", config.get("anef_username", ""))
-PASSWORD = os.getenv("ANEF_PASS", config.get("anef_password", ""))
-
-WA_PHONE = os.getenv("WA_PHONE", config.get("wa_phone", ""))
-WA_APIKEY = os.getenv("WA_APIKEY", config.get("wa_apikey", ""))
+users = config.get("users", [])
 
 STATE_FILE = os.path.join(BASE_DIR, "anef_state.json")
+
+def load_state():
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_state(state):
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f, indent=2, ensure_ascii=False)
 
 def format_date(iso_str):
     try:
@@ -32,90 +38,104 @@ def format_date(iso_str):
     except:
         return iso_str
 
-options = webdriver.ChromeOptions()
-if "--visible" not in sys.argv:
-    options.add_argument("--headless=new")
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
-options.add_argument("--disable-blink-features=AutomationControlled")
-options.add_argument("--window-size=1280,720")
+def check_user(user):
+    username = os.getenv("ANEF_USER", user.get("anef_username", ""))
+    password = os.getenv("ANEF_PASS", user.get("anef_password", ""))
+    wa_phone = os.getenv("WA_PHONE", user.get("wa_phone", ""))
+    wa_apikey = os.getenv("WA_APIKEY", user.get("wa_apikey", ""))
 
-driver = webdriver.Chrome(
-    service=Service(ChromeDriverManager().install()),
-    options=options
-)
+    if not username or not password:
+        print(f"[SKIP] Utilisateur sans identifiants")
+        return
 
-try:
-    driver.get(LOGIN_URL)
-    wait = WebDriverWait(driver, 15)
+    options = webdriver.ChromeOptions()
+    if "--visible" not in sys.argv:
+        options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--window-size=1280,720")
 
-    username_input = wait.until(EC.presence_of_element_located((By.NAME, "username")))
-    username_input.send_keys(USERNAME)
+    driver = webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()),
+        options=options
+    )
 
-    password_input = driver.find_element(By.NAME, "password")
-    password_input.send_keys(PASSWORD)
+    try:
+        print(f"[{username}] Connexion...")
+        driver.get(LOGIN_URL)
+        wait = WebDriverWait(driver, 15)
 
-    submit_button = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
-    submit_button.click()
+        username_input = wait.until(EC.presence_of_element_located((By.NAME, "username")))
+        username_input.send_keys(username)
 
-    wait.until(EC.url_contains("administration-etrangers-en-france.interieur.gouv.fr"))
-    time.sleep(3)
+        password_input = driver.find_element(By.NAME, "password")
+        password_input.send_keys(password)
 
-    js_fetch = f"""
-    return fetch('{API_URL}', {{
-        method: 'GET',
-        credentials: 'include',
-        headers: {{ 'Accept': 'application/json, text/plain, */*' }}
-    }})
-    .then(res => res.status === 200 ? res.json() : res.text())
-    .then(data => JSON.stringify(data))
-    .catch(err => JSON.stringify({{error: err.message}}));
-    """
-    result = driver.execute_script(js_fetch)
-    data = json.loads(result)
+        submit_button = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+        submit_button.click()
 
-    if isinstance(data, dict) and "error" in data:
-        print(json.dumps({"error": data["error"]}))
-        sys.exit(1)
+        wait.until(EC.url_contains("administration-etrangers-en-france.interieur.gouv.fr"))
+        time.sleep(3)
 
-    pretty = json.dumps(data, indent=2, ensure_ascii=False)
-    print(pretty)
+        js_fetch = f"""
+        return fetch('{API_URL}', {{
+            method: 'GET',
+            credentials: 'include',
+            headers: {{ 'Accept': 'application/json, text/plain, */*' }}
+        }})
+        .then(res => res.status === 200 ? res.json() : res.text())
+        .then(data => JSON.stringify(data))
+        .catch(err => JSON.stringify({{error: err.message}}));
+        """
+        result = driver.execute_script(js_fetch)
+        data = json.loads(result)
 
-    new_updated = data.get("_updated")
-    new_status = data.get("statut")
-    numero = data.get("numero_demande", "N/C")
+        if isinstance(data, dict) and "error" in data:
+            print(f"[{username}] Erreur API: {data['error']}")
+            return
 
-    previous_status = None
-    previous_updated = None
+        print(json.dumps(data, indent=2, ensure_ascii=False))
 
-    if os.path.exists(STATE_FILE):
-        with open(STATE_FILE, "r") as f:
-            prev = json.load(f)
-            previous_status = prev.get("last_status")
-            previous_updated = prev.get("date_last_update")
+        new_updated = data.get("_updated")
+        new_status = data.get("statut")
+        numero = data.get("numero_demande", "N/C")
 
-    if new_updated and new_updated > (previous_updated or ""):
-        state = {
-            "date_last_update": new_updated,
-            "last_status": new_status,
-            "numero_demande": numero,
-            "last_data": data,
-        }
-        with open(STATE_FILE, "w") as f:
-            json.dump(state, f, indent=2, ensure_ascii=False)
+        all_state = load_state()
+        prev = all_state.get(username, {})
+        previous_status = prev.get("last_status")
+        previous_updated = prev.get("date_last_update")
 
-        old_status = previous_status or "inconnu"
-        date_fr = format_date(new_updated)
-        msg = f"Votre demande de TS numero {numero} est passé de {old_status} a {new_status} le {date_fr}"
+        if new_updated and new_updated > (previous_updated or ""):
+            all_state[username] = {
+                "date_last_update": new_updated,
+                "last_status": new_status,
+                "numero_demande": numero,
+                "last_data": data,
+            }
+            save_state(all_state)
 
-        wa_url = f"https://api.callmebot.com/whatsapp.php?phone={WA_PHONE}&apikey={WA_APIKEY}&text={requests.utils.quote(msg)}"
-        r = requests.get(wa_url, timeout=10)
-        print(f"[WhatsApp] Envoyé ({r.status_code})")
-    else:
-        print("[STATE] Pas de nouvelle mise à jour, pas d'envoi WhatsApp.")
+            old_status = previous_status or "inconnu"
+            date_fr = format_date(new_updated)
+            msg = f"Votre demande de TS numero {numero} est passé de {old_status} a {new_status} le {date_fr}"
 
-except Exception as e:
-    print(json.dumps({"error": str(e)}))
+            if wa_phone and wa_apikey:
+                wa_url = f"https://api.callmebot.com/whatsapp.php?phone={wa_phone}&apikey={wa_apikey}&text={requests.utils.quote(msg)}"
+                r = requests.get(wa_url, timeout=10)
+                print(f"[{username}] WhatsApp: {r.status_code}")
+            else:
+                print(f"[{username}] Pas de WhatsApp configuré, notification ignorée")
+        else:
+            print(f"[{username}] Pas de nouvelle mise à jour")
+
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+    finally:
+        driver.quit()
+
+if not users:
+    print("Aucun utilisateur dans config.json")
     sys.exit(1)
-finally:
-    driver.quit()
+
+for user in users:
+    check_user(user)

@@ -19,10 +19,23 @@ pip install -r requirements.txt
    ```bash
    cp config.example.json config.json
    ```
-2. Remplissez `config.json` avec vos informations (numéro étranger, mot de passe ANEF, téléphone et clé API CallMeBot).
+2. Ajoutez un ou plusieurs utilisateurs dans la liste `users` de `config.json` :
+
+   ```json
+   {
+       "users": [
+           {
+               "anef_username": "votre_numero",
+               "anef_password": "votre_mot_de_passe",
+               "wa_phone": "+33xxxxxxxxx",
+               "wa_apikey": "votre_cle_api_callmebot"
+           }
+       ]
+   }
+   ```
 
    Vous pouvez aussi passer ces valeurs via des variables d'environnement :
-   `ANEF_USER`, `ANEF_PASS`, `WA_PHONE`, `WA_APIKEY`.
+   `ANEF_USER`, `ANEF_PASS`, `WA_PHONE`, `WA_APIKEY` (pour l'utilisateur unique par défaut).
 
 ## Utilisation
 
@@ -37,9 +50,10 @@ python bot_anef.py --visible
 
 ## Fonctionnement
 
-1. Se connecte au SSO ANEF avec vos identifiants
-2. Récupère le statut de votre demande de titre de séjour
-3. Compare avec le dernier statut connu (stocké dans `anef_state.json`)
+Pour chaque utilisateur dans `config.json` :
+1. Se connecte au SSO ANEF avec ses identifiants
+2. Récupère le statut de sa demande de titre de séjour
+3. Compare avec le dernier statut connu (stocké par utilisateur dans `anef_state.json`)
 4. Envoie une notification WhatsApp via [CallMeBot](https://www.callmebot.com/blog/free-api-whatsapp-messages/) si le statut a changé
 
 ## Licence
