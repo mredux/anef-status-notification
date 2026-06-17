@@ -1,4 +1,4 @@
-# ANEF Bot
+# ANEF Bot — anef-status-notification
 
 Surveille l'évolution d'une demande de titre de séjour sur le site [ANEF](https://administration-etrangers-en-france.interieur.gouv.fr/) et envoie une notification WhatsApp en cas de changement de statut.
 
