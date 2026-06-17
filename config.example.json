@@ -1,0 +1,7 @@
+{
+    "_comment": "Copiez ce fichier en config.json et remplissez vos informations",
+    "anef_username": "votre_numero_etranger",
+    "anef_password": "votre_mot_de_passe",
+    "wa_phone": "+33xxxxxxxxx",
+    "wa_apikey": "votre_cle_api_callmebot"
+}
